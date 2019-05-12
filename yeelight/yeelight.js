@@ -22,26 +22,24 @@ module.exports = function(RED) {
         this.on('close', function() {
             this.light.exit();
         });
+        this.mainNode = RED.nodes.getNode(n.yeelight);
 
-        this.connected = function(){
-            console.log("connected to lamp")
-            node.status({fill:"green",shape:"ring",text:"Connected"});
-        }
         this.setupConnection = function(){
-            this.light = Yeelight(this.credentials.hostname,this.credentials.portnum);
+            this.light = Yeelight(node.credentials.hostname,node.credentials.portnum);
+            this.light.on('connect',function(){
+                console.log("connected to lamp")
+            })
             this.light.on('error',function(err){
                 console.log("Yeelight error",err)
-                node.status({fill:"red",shape:"ring",text:err});
-                this.light = null;
-                this.error(err);
+                node.light = null;
 
-                // try to reconnect in 10 seconds
+                // try to reconnect
                 setTimeout(
                  (function(self) {
                      return function() {
-                            self.setupConnection.apply(self, arguments);
+                            node.setupConnection.apply(self, arguments);
                         }
-                 })(this), 1000*10
+                 })(this), 1000*2
                 );
             })
         }
@@ -73,11 +71,19 @@ module.exports = function(RED) {
             try {
                 var cmd = this.command
                 this.light = this.config ? this.config.light : null;
-                this.light[cmd](msg.payload)
-                node.status({fill:"green",shape:"ring",text:"Connected"});
+                if (this.light != null) {
+                    this.light[cmd](msg.payload)
+                    node.status({fill:"green",shape:"ring",text:"Connected"});
+                }else{
+                    console.log("light not connected, trying to reconnect")
+                    this.config.setupConnection();
+                }      
             } catch(err) {
                 node.status({fill:"red",shape:"ring",text:err});
                 this.error(err)
+                console.log(err)
+                console.log("error when sending cmd, trying to reconnect")
+                this.config.setupConnection();
             }
         });
         this.on("close", function() {
